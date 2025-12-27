@@ -3,7 +3,6 @@ CONFIG_PACKAGE_luci-app-openclash=y
 #增加插件
 CONFIG_PACKAGE_luci-app-cpufreq=y
 CONFIG_PACKAGE_luci-app-ddns=y
-CONFIG_PACKAGE_luci-app-diskman=y
 CONFIG_PACKAGE_luci-app-upnp=y
 #删除插件
 CONFIG_PACKAGE_luci-app-homeproxy=n
@@ -17,6 +16,7 @@ CONFIG_PACKAGE_luci-app-netspeedtest=n
 CONFIG_PACKAGE_luci-app-wol=n
 CONFIG_PACKAGE_luci-app-athena-led=n
 CONFIG_PACKAGE_luci-app-sqm=n
+CONFIG_PACKAGE_luci-app-diskman=n
 #参数调整
 CONFIG_CCACHE=y
 CONFIG_DEVEL=y
