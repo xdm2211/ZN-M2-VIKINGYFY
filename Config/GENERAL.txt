@@ -1,5 +1,7 @@
 #科学插件调整
 CONFIG_PACKAGE_luci-app-openclash=y
+#主题设置 (原生原版)
+CONFIG_PACKAGE_luci-theme-argon=y
 #增加插件
 CONFIG_PACKAGE_luci-app-cpufreq=y
 CONFIG_PACKAGE_luci-app-ddns=y
