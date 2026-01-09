@@ -1,4 +1,4 @@
-# 云编译公用核心 - 极致稳健版
+# 云编译公用核心 - 极致 100% 完美版
 name: WRT-CORE
 
 on:
@@ -7,10 +7,7 @@ on:
       WRT_CONFIG: { required: true, type: string }
       WRT_THEME: { required: true, type: string }
       WRT_NAME: { required: true, type: string }
-      WRT_SSID: { required: true, type: string }
-      WRT_WORD: { required: true, type: string }
       WRT_IP: { required: true, type: string }
-      WRT_PW: { required: true, type: string }
       WRT_REPO: { required: true, type: string }
       WRT_BRANCH: { required: true, type: string }
       WRT_SOURCE: { required: true, type: string }
@@ -18,130 +15,100 @@ on:
       WRT_TEST: { required: false, type: string }
 
 env:
-  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-  WRT_CONFIG: ${{inputs.WRT_CONFIG}}
-  WRT_THEME: ${{inputs.WRT_THEME}}
-  WRT_NAME: ${{inputs.WRT_NAME}}
-  WRT_SSID: ${{inputs.WRT_SSID}}
-  WRT_WORD: ${{inputs.WRT_WORD}}
-  WRT_IP: ${{inputs.WRT_IP}}
-  WRT_PW: ${{inputs.WRT_PW}}
-  WRT_REPO: ${{inputs.WRT_REPO}}
-  WRT_BRANCH: ${{inputs.WRT_BRANCH}}
-  WRT_SOURCE: ${{inputs.WRT_SOURCE}}
-  WRT_PACKAGE: ${{inputs.WRT_PACKAGE}}
-  WRT_TEST: ${{inputs.WRT_TEST}}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  WRT_CONFIG: ${{ inputs.WRT_CONFIG }}
+  WRT_THEME: ${{ inputs.WRT_THEME }}
+  WRT_NAME: ${{ inputs.WRT_NAME }}
+  WRT_IP: ${{ inputs.WRT_IP }}
+  WRT_REPO: ${{ inputs.WRT_REPO }}
+  WRT_BRANCH: ${{ inputs.WRT_BRANCH }}
+  WRT_SOURCE: ${{ inputs.WRT_SOURCE }}
+  WRT_PACKAGE: ${{ inputs.WRT_PACKAGE }}
+  WRT_TEST: ${{ inputs.WRT_TEST }}
 
 jobs:
   core:
-    name: ${{inputs.WRT_SOURCE}}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Projects
         uses: actions/checkout@main
 
       - name: Initialization Environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
-          # 极致空间清理
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /usr/share/swift /usr/local/lib/node_modules /var/lib/mongodb
-          # [优化] 额外清理 Docker 镜像释放空间
+          # 1. 极致深度清理磁盘空间
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /usr/share/swift /var/lib/mongodb /usr/local/share/powershell
           sudo docker image prune -a -f
-          sudo -E apt -yqq purge firefox google-chrome-stable microsoft-edge-stable
-          sudo -E apt -yqq update
-          sudo -E apt -yqq full-upgrade
-          sudo -E apt -yqq install dos2unix python3-netifaces libfuse-dev jq
+          sudo apt-get remove -y 'php.*' 'mysql.*' 'azure.*' 'google.*' firefox google-chrome-stable powershell
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          # 2. 注入编译环境依赖
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
-          sudo mkdir -p /mnt/build_wrt
-          sudo chown $USER:$USER /mnt/build_wrt
-          sudo ln -s /mnt/build_wrt $GITHUB_WORKSPACE/wrt
+          sudo timedatectl set-timezone "Asia/Shanghai"
 
-      - name: Initialization Values
+      - name: Clone Source Code
         run: |
-          echo "WRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d-%H.%M.%S")" >> $GITHUB_ENV
-          echo "WRT_MARK=${GITHUB_REPOSITORY%%/*}" >> $GITHUB_ENV
-          echo "WRT_INFO=${WRT_SOURCE%%/*}" >> $GITHUB_ENV
-          # 自动获取编译目标平台
-          TARGET_VAL=$(grep -m 1 -oP '^CONFIG_TARGET_\K[\w]+(?=\=y)' ./Config/$WRT_CONFIG.txt | head -n 1)
-          echo "WRT_TARGET=$TARGET_VAL" >> $GITHUB_ENV
+          git clone --depth=1 --single-branch --branch $WRT_BRANCH $WRT_REPO wrt
+          cd wrt/ && echo "WRT_DATE=$(date +%Y.%m.%d)" >> $GITHUB_ENV
 
-      - name: Clone Code
+      - name: Update & Install Feeds
         run: |
-          git clone --depth=1 --single-branch --branch $WRT_BRANCH $WRT_REPO ./wrt/
-          cd ./wrt/ && echo "WRT_HASH=$(git log -1 --pretty=format:'%h')" >> $GITHUB_ENV
-
-      - name: Check Scripts
-        run: |
-          # 统一处理脚本格式，防止 Windows/Unix 换行符冲突
-          find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
-
-      - name: Update Feeds
-        run: cd ./wrt/ && ./scripts/feeds update -a && ./scripts/feeds install -a
+          cd ./wrt/
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
       - name: Custom Packages
-        # [安全] 显式传递 Token，确保 Packages.sh 可以调用 GitHub API
-        env: 
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ./wrt/package/
-          # 显式传递工作空间路径
-          GITHUB_WORKSPACE=$GITHUB_WORKSPACE bash $GITHUB_WORKSPACE/Scripts/Packages.sh
-          GITHUB_WORKSPACE=$GITHUB_WORKSPACE bash $GITHUB_WORKSPACE/Scripts/Handles.sh
+          # 调用外部脚本更新插件
+          bash $GITHUB_WORKSPACE/Scripts/Packages.sh
+
+      - name: Custom Handles
+        run: |
+          cd ./wrt/
+          # 执行 NSS 优化、去无线补丁、Rust 修复
+          bash $GITHUB_WORKSPACE/Scripts/Handles.sh
 
       - name: Custom Settings
         run: |
           cd ./wrt/
-          # 合并配置文件
-          if [[ "${WRT_CONFIG,,}" == *"test"* ]]; then
-            cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt >> .config
-          else
-            cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt $GITHUB_WORKSPACE/Config/GENERAL.txt >> .config
-          fi
+          # 组合配置文件：设备配置 + 通用配置
+          cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt $GITHUB_WORKSPACE/Config/GENERAL.txt > .config
           
-          # 显式传递环境变量，调用修正后的 Settings.sh
-          WRT_IP=${{ env.WRT_IP }} \
-          WRT_NAME=${{ env.WRT_NAME }} \
-          WRT_TARGET=${{ env.WRT_TARGET }} \
-          WRT_CONFIG=${{ env.WRT_CONFIG }} \
+          # 显式导出变量供 Settings.sh 使用
+          export WRT_IP=${{ inputs.WRT_IP }}
+          export WRT_NAME=${{ inputs.WRT_NAME }}
+          export WRT_PACKAGE=${{ inputs.WRT_PACKAGE }}
           bash $GITHUB_WORKSPACE/Scripts/Settings.sh
           
-          # 执行依赖修正
+          # 修正依赖关系并静默处理
           make defconfig
-
-      - name: Check Disk Space
-        run: |
-          echo "--- 编译前磁盘空间监控 ---"
-          df -hT
 
       - name: Download Packages
         if: env.WRT_TEST != 'true'
-        run: cd ./wrt/ && make download -j$(nproc) && find dl -size -1024c -exec rm -f {} \;
+        run: |
+          cd ./wrt/
+          make download -j$(nproc)
+          find dl -size -1024c -exec rm -f {} \;
 
       - name: Compile Firmware
         if: env.WRT_TEST != 'true'
         run: |
           cd ./wrt/
+          # 首次尝试多线程，失败则单线程输出详细日志
           make -j$(nproc) || make -j1 V=s
-          echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \; | head -n 1)" >> $GITHUB_ENV
 
       - name: Package Firmware
         run: |
           cd ./wrt/ && mkdir ./upload/
           cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_DATE".txt
           if [[ $WRT_TEST != 'true' ]]; then
+            # 清理无用后缀文件
             find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
-            for FILE in $(find ./bin/targets/ -type f -iname "*$WRT_TARGET*") ; do
-              EXT=$(basename $FILE | cut -d '.' -f 2-)
-              NAME=$(basename $FILE | cut -d '.' -f 1 | grep -io "\($WRT_TARGET\).*")
-              mv -f $FILE ./upload/"$WRT_INFO"-"$WRT_BRANCH"-"$NAME"-"$WRT_DATE"."$EXT"
-            done
+            cp -rf $(find ./bin/targets/ -type f -name "*$WRT_TARGET*") ./upload/
           fi
 
-      - name: Release Firmware
-        uses: softprops/action-gh-release@v2
-        if: env.WRT_TEST != 'true'
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@main
         with:
-          tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_DATE}}
-          files: ./wrt/upload/*.*
+          name: ${{ env.WRT_CONFIG }}-${{ env.WRT_DATE }}
+          path: ./wrt/upload/
