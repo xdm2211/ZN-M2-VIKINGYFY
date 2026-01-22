@@ -1,42 +1,98 @@
 #!/bin/bash
 
-# =========================================================
-# 路径定义 (适配 GitHub Actions 环境)
-# =========================================================
-PKG_PATH="$GITHUB_WORKSPACE/wrt/package"
-FEED_PATH="$GITHUB_WORKSPACE/wrt/feeds"
+PKG_PATH="$GITHUB_WORKSPACE/wrt/package/"
 
-# 1. NSS 相关组件启动顺序优化 (有线加速稳定性的关键)
-# ---------------------------------------------------------
-# 将启动顺序从默认调整为 85，确保网络栈完全就绪后再加载 NSS 驱动
-NSS_DRV_FILE=$(find "$FEED_PATH" -type f -name "qca-nss-drv.init" | head -n 1)
-if [ -f "$NSS_DRV_FILE" ]; then
-    sed -i 's/START=.*/START=85/g' "$NSS_DRV_FILE"
+#预置HomeProxy数据
+if [ -d *"homeproxy"* ]; then
+	echo " "
+
+	HP_RULE="surge"
+	HP_PATH="homeproxy/root/etc/homeproxy"
+
+	rm -rf ./$HP_PATH/resources/*
+
+	git clone -q --depth=1 --single-branch --branch "release" "https://github.com/Loyalsoldier/surge-rules.git" ./$HP_RULE/
+	cd ./$HP_RULE/ && RES_VER=$(git log -1 --pretty=format:'%s' | grep -o "[0-9]*")
+
+	echo $RES_VER | tee china_ip4.ver china_ip6.ver china_list.ver gfw_list.ver
+	awk -F, '/^IP-CIDR,/{print $2 > "china_ip4.txt"} /^IP-CIDR6,/{print $2 > "china_ip6.txt"}' cncidr.txt
+	sed 's/^\.//g' direct.txt > china_list.txt ; sed 's/^\.//g' gfw.txt > gfw_list.txt
+	mv -f ./{china_*,gfw_list}.{ver,txt} ../$HP_PATH/resources/
+
+	cd .. && rm -rf ./$HP_RULE/
+
+	cd $PKG_PATH && echo "homeproxy date has been updated!"
 fi
 
-# 2. 彻底抹除无线残留 (驱动定义与初始化脚本)
-# ---------------------------------------------------------
-# 物理删除 mac80211 的初始化定义，从根源切断无线配置生成
-find "$PKG_PATH" -type f -name "mac80211.sh" -delete
-rm -f "$PKG_PATH/base-files/files/etc/config/wireless"
+#修改argon主题字体和颜色
+if [ -d *"luci-theme-argon"* ]; then
+	echo " "
 
-# 3. 清理 LuCI 应用中可能残留的无线插件目录
-# ---------------------------------------------------------
-# 彻底删除 MTK 专用无线界面和无线定时插件，防止它们出现在编译菜单中
-find "$FEED_PATH/luci/" -type d -name "*luci-app-mtwifi*" | xargs rm -rf
-find "$FEED_PATH/luci/" -type d -name "*luci-app-wifi-schedule*" | xargs rm -rf
+	cd ./luci-theme-argon/
 
-# 4. 提升有线并发性能 (内核参数调优)
-# ---------------------------------------------------------
-# [优化] 增大 nf_conntrack_max 到 131072，适配 512M/1G 内存设备的高并发需求
-if ! grep -q "nf_conntrack_max" "$PKG_PATH/base-files/files/etc/sysctl.conf"; then
-    echo "net.netfilter.nf_conntrack_max=131072" >> "$PKG_PATH/base-files/files/etc/sysctl.conf"
+	sed -i "s/primary '.*'/primary '#31a1a1'/; s/'0.2'/'0.5'/; s/'none'/'bing'/; s/'600'/'normal'/" ./luci-app-argon-config/root/etc/config/argon
+
+	cd $PKG_PATH && echo "theme-argon has been fixed!"
 fi
 
-# 5. 修复 Rust 编译环境 (解决编译插件如 OpenClash 时的报错)
-# ---------------------------------------------------------
-# [优化] 扩大搜索范围到整个 feeds 目录，防止 rust 包路径变更导致查找失败
-RUST_FILE=$(find "$FEED_PATH" -maxdepth 4 -type f -wholename "*/rust/Makefile" | head -n 1)
-if [ -n "$RUST_FILE" ] && [ -f "$RUST_FILE" ]; then
-    sed -i 's/ci-llvm=true/ci-llvm=false/g' "$RUST_FILE"
+#修改qca-nss-drv启动顺序
+NSS_DRV="../feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
+if [ -f "$NSS_DRV" ]; then
+	echo " "
+
+	sed -i 's/START=.*/START=85/g' $NSS_DRV
+
+	cd $PKG_PATH && echo "qca-nss-drv has been fixed!"
+fi
+
+#修改qca-nss-pbuf启动顺序
+NSS_PBUF="./kernel/mac80211/files/qca-nss-pbuf.init"
+if [ -f "$NSS_PBUF" ]; then
+	echo " "
+
+	sed -i 's/START=.*/START=86/g' $NSS_PBUF
+
+	cd $PKG_PATH && echo "qca-nss-pbuf has been fixed!"
+fi
+
+#修复TailScale配置文件冲突
+TS_FILE=$(find ../feeds/packages/ -maxdepth 3 -type f -wholename "*/tailscale/Makefile")
+if [ -f "$TS_FILE" ]; then
+	echo " "
+
+	sed -i '/\/files/d' $TS_FILE
+
+	cd $PKG_PATH && echo "tailscale has been fixed!"
+fi
+
+#修复Rust编译失败
+RUST_FILE=$(find ../feeds/packages/ -maxdepth 3 -type f -wholename "*/rust/Makefile")
+if [ -f "$RUST_FILE" ]; then
+	echo " "
+
+	sed -i 's/ci-llvm=true/ci-llvm=false/g' $RUST_FILE
+
+	cd $PKG_PATH && echo "rust has been fixed!"
+fi
+
+#修复DiskMan编译失败
+DM_FILE="./luci-app-diskman/applications/luci-app-diskman/Makefile"
+if [ -f "$DM_FILE" ]; then
+	echo " "
+
+	sed -i '/ntfs-3g-utils /d' $DM_FILE
+
+	cd $PKG_PATH && echo "diskman has been fixed!"
+fi
+
+#修复luci-app-netspeedtest相关问题
+if [ -d *"luci-app-netspeedtest"* ]; then
+	echo " "
+
+	cd ./luci-app-netspeedtest/
+
+	sed -i '$a\exit 0' ./netspeedtest/files/99_netspeedtest.defaults
+	sed -i 's/ca-certificates/ca-bundle/g' ./speedtest-cli/Makefile
+
+	cd $PKG_PATH && echo "netspeedtest has been fixed!"
 fi
